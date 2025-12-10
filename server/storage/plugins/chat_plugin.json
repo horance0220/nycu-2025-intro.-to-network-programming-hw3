@@ -1,0 +1,6 @@
+﻿{
+    "id": "chat_plugin",
+    "name": "Room Chat Plugin",
+    "version": "1.0.0",
+    "features": ["chat"]
+}

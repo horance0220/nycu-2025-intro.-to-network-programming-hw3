@@ -1,0 +1,10 @@
+{
+    "name": "猜數字大戰",
+    "description": "多人猜數字遊戲！系統會隨機產生一個 1-100 的數字，玩家輪流猜，猜中者獲勝！支援 2-6 人同時遊玩。",
+    "version": "1.0.0",
+    "game_type": "GUI",
+    "min_players": 2,
+    "max_players": 6,
+    "server_command": ["python", "server.py"],
+    "client_command": ["python", "client.py"]
+}

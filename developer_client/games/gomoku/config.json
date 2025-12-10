@@ -1,0 +1,10 @@
+{
+    "name": "五子棋對戰",
+    "description": "經典的雙人對戰五子棋遊戲，支援 GUI 介面。先連成五子者獲勝！",
+    "version": "1.0.0",
+    "game_type": "GUI",
+    "min_players": 2,
+    "max_players": 2,
+    "server_command": ["python", "server.py"],
+    "client_command": ["python", "client.py"]
+}

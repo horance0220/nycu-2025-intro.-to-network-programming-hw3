@@ -1,0 +1,10 @@
+{
+    "name": "遊戲名稱",
+    "description": "遊戲簡介說明",
+    "version": "1.0.0",
+    "game_type": "GUI",
+    "min_players": 2,
+    "max_players": 2,
+    "server_command": ["python", "server.py"],
+    "client_command": ["python", "client.py"]
+}

@@ -1,0 +1,22 @@
+# Game Store System - Requirements
+# 
+# 本專案主要使用 Python 標準庫，無需額外安裝套件
+#
+# 使用的標準庫：
+# - socket: TCP 網路通訊
+# - threading: 多執行緒處理
+# - json: JSON 序列化/反序列化
+# - hashlib: MD5 檔案校驗
+# - subprocess: 啟動遊戲伺服器
+# - zipfile: 遊戲打包/解壓縮
+# - tkinter: GUI 介面
+# - uuid: Session ID 生成
+# - datetime: 時間戳記
+# - os, sys, struct: 系統操作
+#
+# Python 版本需求：
+# Python >= 3.8
+#
+# 如果需要額外功能，可以取消以下註解：
+# colorama>=0.4.6  # 終端機彩色輸出
+# rich>=13.0.0     # 更豐富的終端機輸出
