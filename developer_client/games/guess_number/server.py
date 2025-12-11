@@ -29,6 +29,28 @@ game = GameState()
 lock = threading.Lock()
 server_socket = None
 
+def report_result(lobby_host, lobby_port, room_id, result):
+    """回報遊戲結果給 Lobby Server"""
+    if not lobby_port or not room_id:
+        return
+        
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((lobby_host, lobby_port))
+        
+        request = {
+            "action": "REPORT_GAME_RESULT",
+            "room_id": room_id,
+            "result": result
+        }
+        
+        data = json.dumps(request).encode('utf-8')
+        sock.sendall(len(data).to_bytes(4, 'big') + data)
+        sock.close()
+        print(f"[Report] Result sent to lobby: {result}")
+    except Exception as e:
+        print(f"[Error] Failed to report result: {e}")
+
 def send_to_client(client_socket, message):
     """發送訊息給客戶端"""
     try:
@@ -247,6 +269,8 @@ def main():
     parser = argparse.ArgumentParser(description='猜數字遊戲伺服器')
     parser.add_argument('--port', type=int, default=9000, help='監聽埠號')
     parser.add_argument('--host', type=str, default='0.0.0.0', help='監聽位址')
+    parser.add_argument('--lobby-port', type=int, help="Lobby Server Port")
+    parser.add_argument('--room-id', type=str, help="Room ID")
     args = parser.parse_args()
     
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -264,6 +288,14 @@ def main():
             # 檢查是否遊戲已結束
             with lock:
                 if game.winner is not None:
+                    # 回報結果
+                    if args.lobby_port and args.room_id:
+                        result = {
+                            "winner": game.winner,
+                            "reason": "normal_end"
+                        }
+                        report_result(args.host, args.lobby_port, args.room_id, result)
+                    
                     time.sleep(3)
                     break
                 if game.game_started and len(game.players) == 0:

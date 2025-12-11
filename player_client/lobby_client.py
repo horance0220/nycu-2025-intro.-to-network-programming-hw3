@@ -598,14 +598,60 @@ def enter_room(room_id):
             input("  按 Enter 返回...")
             return
         
+        # 檢查遊戲版本
+        game_id = room.get('game_id')
+        latest_version = None
+        local_version = None
+        can_play = True
+        version_msg = ""
+        
+        if game_id:
+            local_version = get_local_version(game_id)
+            
+            # 取得 Server 最新版本
+            g_resp = send_request("GET_GAME_DETAIL", {"game_id": game_id})
+            if g_resp and g_resp.get("success"):
+                latest_version = g_resp["data"]["version"]
+            
+            if not local_version:
+                can_play = False
+                version_msg = f"⚠️ 您尚未下載此遊戲 (v{latest_version})"
+            elif latest_version and local_version != latest_version:
+                can_play = False
+                version_msg = f"⚠️ 有新版本可用 (v{latest_version})，請先更新！"
+        
         print(f"\n  🎮 遊戲: {room['game_name']}")
         print(f"  👥 人數: {room['player_count']}/{room['max_players']}")
         print(f"  📊 狀態: {room['status']} (更新於 {time.strftime('%H:%M:%S')})")
+        if version_msg:
+            print(f"  {version_msg}")
+            
         print(f"\n  玩家列表:")
         for player in room['players']:
             marker = "⭐ " if player == room['host'] else "   "
             you = " (你)" if player == username else ""
             print(f"  {marker}{player}{you}")
+            
+        # ===== Plugin: Chat =====
+        chat_plugin_ver = get_local_plugin_version("chat_plugin")
+        if chat_plugin_ver:
+            print(f"\n  💬 聊天室 (Plugin v{chat_plugin_ver}):")
+            print("  " + "-" * 40)
+            
+            # 取得聊天紀錄
+            chat_resp = send_request("GET_ROOM_CHAT", {"room_id": room_id})
+            if chat_resp and chat_resp.get("success"):
+                history = chat_resp["data"]["chat_history"]
+                if not history:
+                    print("  (無訊息)")
+                else:
+                    # 顯示最近 5 則
+                    for msg in history[-5:]:
+                        print(f"  [{msg['time']}] {msg['username']}: {msg['message']}")
+            else:
+                print("  (無法取得聊天紀錄)")
+            print("  " + "-" * 40)
+        # ========================
         
         is_host = room['host'] == username
         
@@ -613,14 +659,26 @@ def enter_room(room_id):
         actions = []
         
         if is_host and room['status'] == 'waiting':
-            options.append("開始遊戲")
-            actions.append("START")
+            if can_play:
+                options.append("開始遊戲")
+                actions.append("START")
+            else:
+                options.append("下載/更新遊戲")
+                actions.append("UPDATE")
         elif not is_host and room['status'] == 'playing':
-            options.append("進入遊戲")
-            actions.append("JOIN_GAME")
+            if can_play:
+                options.append("進入遊戲")
+                actions.append("JOIN_GAME")
+            else:
+                options.append("下載/更新遊戲")
+                actions.append("UPDATE")
             
         options.append("離開房間")
         actions.append("LEAVE")
+        
+        if chat_plugin_ver:
+            options.append("發送聊天訊息")
+            actions.append("SEND_CHAT")
         
         options.append("重新整理")
         actions.append("REFRESH")
@@ -637,19 +695,17 @@ def enter_room(room_id):
         if action == "START":
             start_game(room_id, room['game_name'])
         elif action == "JOIN_GAME":
-            # 嘗試取得 game_id，若無則嘗試從 room_id 猜測 (舊版相容)
-            gid = room.get('game_id')
-            if not gid:
-                # 嘗試從本地下載目錄找最像的? 不，只能猜測
-                # 這裡假設 room_id 沒包含 game_id，所以只能依賴 server 回傳
-                # 如果 server 沒回傳 game_id，這裡會失敗
-                print("  ❌ 無法取得遊戲 ID，請確認 Server 版本")
-            else:
-                join_started_game(room_id, gid, room.get('port'))
+            join_started_game(room_id, game_id, room.get('port'))
+        elif action == "UPDATE":
+            download_game(game_id, room['game_name'], latest_version)
         elif action == "LEAVE":
             send_request("LEAVE_ROOM", {"room_id": room_id})
             current_room = None
             return
+        elif action == "SEND_CHAT":
+            msg = input("\n  輸入訊息: ").strip()
+            if msg:
+                send_request("SEND_CHAT", {"room_id": room_id, "message": msg})
         elif action == "REFRESH":
             pass
 
@@ -715,18 +771,21 @@ def start_game(room_id, game_name):
     
     launch_game_client(game_id, port, client_cmd)
     
-    print("\n  遊戲進行中...")
-    input("  遊戲結束後按 Enter 繼續...")
-    
-    # 結束遊戲
-    send_request("END_GAME", {"room_id": room_id})
+    print("\n  遊戲進行中... (關閉遊戲視窗以返回)")
     
     if game_process:
         try:
-            game_process.terminate()
-        except:
+            game_process.wait()
+        except KeyboardInterrupt:
             pass
         game_process = None
+    
+    # 遊戲結束，不發送 END_GAME，因為 Game Server 會回報結果並將房間設為 waiting
+    # 除非是強制結束... 但這裡假設正常流程
+    print("\n  遊戲已結束")
+    
+    # 詢問是否評分
+    prompt_review_after_game(game_id)
 
 def join_started_game(room_id, game_id, port):
     """加入已開始的遊戲 (非房主)"""
@@ -735,17 +794,35 @@ def join_started_game(room_id, game_id, port):
     print("\n  ⏳ 正在啟動遊戲客戶端...")
     launch_game_client(game_id, port)
     
-    print("\n  遊戲進行中...")
-    input("  遊戲結束後按 Enter 返回大廳...")
+    print("\n  遊戲進行中... (關閉遊戲視窗以返回)")
     
     if game_process:
         try:
-            game_process.terminate()
-        except:
+            game_process.wait()
+        except KeyboardInterrupt:
             pass
         game_process = None
+    
+    print("\n  遊戲已結束")
+    
+    # 詢問是否評分
+    prompt_review_after_game(game_id)
 
 # ========================= 評論功能 =========================
+
+def prompt_review_after_game(game_id):
+    """遊戲結束後詢問是否評分"""
+    print("\n" + "=" * 50)
+    print("  遊戲結束！")
+    print("  您想要對這款遊戲進行評分嗎？")
+    print("  1. 評分並返回房間")
+    print("  2. 直接返回房間")
+    print("=" * 50)
+    
+    choice = get_choice("請選擇 (1-2): ", 2)
+    
+    if choice == 1:
+        write_review(game_id)
 
 def write_review(game_id):
     """撰寫評論"""
@@ -765,18 +842,27 @@ def write_review(game_id):
     
     comment = input("  評論內容 (可選，最多 500 字): ").strip()
     
-    print("\n  ⏳ 正在送出...")
-    
-    response = send_request("ADD_REVIEW", {
-        "game_id": game_id,
-        "rating": rating,
-        "comment": comment
-    })
-    
-    if response and response.get("success"):
-        print("  ✅ 評論成功！")
-    else:
-        print(f"  ❌ {response.get('message', '評論失敗')}")
+    while True:
+        print("\n  ⏳ 正在送出...")
+        
+        response = send_request("ADD_REVIEW", {
+            "game_id": game_id,
+            "rating": rating,
+            "comment": comment
+        })
+        
+        if response and response.get("success"):
+            print("  ✅ 評論成功！")
+            break
+        elif response is None:
+            print("  ❌ 連線失敗，無法送出評論。")
+            retry = input("  要重試嗎? (y/n): ").strip().lower()
+            if retry != 'y':
+                print("  ⚠️ 評論未送出。")
+                break
+        else:
+            print(f"  ❌ {response.get('message', '評論失敗')}")
+            break
     
     input("  按 Enter 返回...")
 
@@ -801,96 +887,296 @@ def plugin_menu():
         elif choice == 2:
             show_installed_plugins()
 
+def get_local_plugin_version(plugin_id):
+    """取得本地 Plugin 版本"""
+    if not player_download_dir:
+        return None
+        
+    record_path = os.path.join(player_download_dir, 'plugins', 'installed.json')
+    if not os.path.exists(record_path):
+        return None
+        
+    try:
+        with open(record_path, 'r', encoding='utf-8') as f:
+            record = json.load(f)
+        val = record.get(plugin_id)
+        if isinstance(val, dict):
+            return val.get('version')
+        return val
+    except:
+        return None
+
+def get_local_plugin_filename(plugin_id):
+    """取得本地 Plugin 檔名"""
+    if not player_download_dir:
+        return None
+        
+    record_path = os.path.join(player_download_dir, 'plugins', 'installed.json')
+    if not os.path.exists(record_path):
+        return None
+        
+    try:
+        with open(record_path, 'r', encoding='utf-8') as f:
+            record = json.load(f)
+        val = record.get(plugin_id)
+        if isinstance(val, dict):
+            return val.get('filename')
+        return None
+    except:
+        return None
+
+def update_local_plugin_record(plugin_id, version, filename):
+    """更新本地 Plugin 紀錄"""
+    if not player_download_dir:
+        return
+        
+    plugins_dir = os.path.join(player_download_dir, 'plugins')
+    os.makedirs(plugins_dir, exist_ok=True)
+    
+    record_path = os.path.join(plugins_dir, 'installed.json')
+    record = {}
+    
+    if os.path.exists(record_path):
+        try:
+            with open(record_path, 'r', encoding='utf-8') as f:
+                record = json.load(f)
+        except:
+            pass
+            
+    record[plugin_id] = {
+        "version": version,
+        "filename": filename
+    }
+    
+    with open(record_path, 'w', encoding='utf-8') as f:
+        json.dump(record, f, indent=4)
+
+def remove_local_plugin(plugin_id):
+    """移除本地 Plugin"""
+    if not player_download_dir:
+        return False, "未登入"
+        
+    filename = get_local_plugin_filename(plugin_id)
+    if not filename:
+        # 嘗試從舊格式或直接猜測? 不，如果沒有紀錄就無法安全刪除
+        # 但如果是舊格式(只存版本字串)，我們不知道檔名。
+        # 這裡假設都已經是新格式，或者無法刪除舊格式的殘留檔案(除非手動)。
+        return False, "找不到 Plugin 檔案紀錄"
+        
+    plugins_dir = os.path.join(player_download_dir, 'plugins')
+    file_path = os.path.join(plugins_dir, filename)
+    
+    # 刪除檔案
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            return False, f"刪除檔案失敗: {e}"
+            
+    # 更新紀錄
+    record_path = os.path.join(plugins_dir, 'installed.json')
+    if os.path.exists(record_path):
+        try:
+            with open(record_path, 'r', encoding='utf-8') as f:
+                record = json.load(f)
+            
+            if plugin_id in record:
+                del record[plugin_id]
+                
+            with open(record_path, 'w', encoding='utf-8') as f:
+                json.dump(record, f, indent=4)
+        except Exception as e:
+            return False, f"更新紀錄失敗: {e}"
+            
+    return True, "移除成功"
+
 def browse_plugins():
     """瀏覽並安裝 Plugin"""
-    print_header("可用 Plugin")
-    
-    response = send_request("LIST_PLUGINS")
-    if not response or not response.get("success"):
-        print(f"  ❌ 取得列表失敗: {response.get('message') if response else 'Unknown'}")
-        input("  按 Enter 返回...")
-        return
+    while True:
+        clear_screen()
+        print_header("可用 Plugin")
         
-    plugins = response.get("data", {})
-    if not plugins:
-        print("  ⚠️ 目前沒有可用的 Plugin")
-        input("  按 Enter 返回...")
-        return
+        response = send_request("LIST_PLUGINS")
+        if not response or not response.get("success"):
+            print(f"  ❌ 取得列表失敗: {response.get('message') if response else 'Unknown'}")
+            input("  按 Enter 返回...")
+            return
+            
+        plugins = response.get("data", {})
+        if not plugins:
+            print("  ⚠️ 目前沒有可用的 Plugin")
+            input("  按 Enter 返回...")
+            return
+            
+        plugin_ids = list(plugins.keys())
         
-    plugin_ids = list(plugins.keys())
-    print(f"{'ID':<15} {'名稱':<20} {'版本':<10} {'描述'}")
-    print("-" * 60)
-    
-    for pid in plugin_ids:
-        p = plugins[pid]
-        print(f"{pid:<15} {p['name']:<20} {p['version']:<10} {p['description']}")
-    print("-" * 60)
-    
-    pid_input = input("\n請輸入要安裝的 Plugin ID (或按 Enter 返回): ").strip()
-    if not pid_input:
-        return
+        print(f"  {'ID':<12} {'名稱':<15} {'狀態':<15} {'描述'}")
+        print("  " + "-" * 65)
         
-    if pid_input not in plugins:
-        print("  ❌ 無效的 ID")
-        time.sleep(1)
-        return
+        for i, pid in enumerate(plugin_ids, 1):
+            p = plugins[pid]
+            server_ver = p['version']
+            local_ver = get_local_plugin_version(pid)
+            
+            status = "未安裝"
+            if local_ver:
+                if local_ver == server_ver:
+                    status = f"已安裝 (v{local_ver})"
+                else:
+                    status = f"可更新 (v{local_ver} -> v{server_ver})"
+            
+            print(f"  {i}. {p['name']:<15} {status:<15} {p['description']}")
         
-    # 下載
-    print(f"  ⬇️ 正在下載 {pid_input} ...")
-    
-    # 確保 plugin 目錄存在
-    plugins_dir = os.path.join(player_download_dir, 'plugins')
-    if not os.path.exists(plugins_dir):
-        os.makedirs(plugins_dir)
+        print("  " + "-" * 65)
+        print(f"  {len(plugin_ids) + 1}. 返回")
         
-    # 發送下載請求
-    req = {
-        "action": "DOWNLOAD_PLUGIN",
-        "client_type": "player",
-        "session_id": session_id,
-        "plugin_id": pid_input
-    }
-    send_json(sock, req)
-    
-    # 接收檔案
-    file_path = os.path.join(plugins_dir, plugins[pid_input]['filename'])
-    success, msg = recv_file_with_metadata(sock, file_path)
-    
-    if success:
-        print(f"  ✅ 安裝成功！")
-    else:
-        print(f"  ❌ 安裝失敗: {msg}")
-    
-    input("  按 Enter 返回...")
+        choice = get_choice("\n  選擇 Plugin 查看詳情或管理: ", len(plugin_ids) + 1)
+        
+        if choice == 'q' or choice == len(plugin_ids) + 1:
+            return
+            
+        selected_pid = plugin_ids[choice - 1]
+        manage_plugin_interaction(selected_pid, plugins[selected_pid])
+
+def manage_plugin_interaction(pid, plugin_info):
+    """管理單一 Plugin 的互動介面"""
+    while True:
+        clear_screen()
+        print_header(f"Plugin 詳情 - {plugin_info['name']}")
+        
+        server_ver = plugin_info['version']
+        local_ver = get_local_plugin_version(pid)
+        
+        status = "未安裝"
+        if local_ver:
+            if local_ver == server_ver:
+                status = f"已安裝 (v{local_ver})"
+            else:
+                status = f"可更新 (v{local_ver} -> v{server_ver})"
+        
+        print(f"\n  📌 基本資訊")
+        print(f"  ├─ ID: {pid}")
+        print(f"  ├─ 名稱: {plugin_info['name']}")
+        print(f"  ├─ 最新版本: v{server_ver}")
+        print(f"  └─ 狀態: {status}")
+        
+        print(f"\n  📝 描述")
+        print(f"  {plugin_info['description']}")
+        
+        options = []
+        actions = []
+        
+        if not local_ver:
+            options.append("安裝此 Plugin")
+            actions.append("INSTALL")
+        else:
+            if local_ver != server_ver:
+                options.append("更新此 Plugin")
+                actions.append("INSTALL")
+            
+            options.append("移除此 Plugin")
+            actions.append("REMOVE")
+            
+        options.append("返回列表")
+        actions.append("BACK")
+        
+        print_menu(options)
+        
+        choice = get_choice("請選擇: ", len(options))
+        
+        if choice == 'q':
+            return
+            
+        action = actions[choice - 1]
+        
+        if action == "BACK":
+            return
+            
+        elif action == "INSTALL":
+            print(f"\n  ⬇️ 正在下載 {plugin_info['name']} ...")
+            
+            # 確保 plugin 目錄存在
+            plugins_dir = os.path.join(player_download_dir, 'plugins')
+            if not os.path.exists(plugins_dir):
+                os.makedirs(plugins_dir)
+                
+            # 發送下載請求
+            req = {
+                "action": "DOWNLOAD_PLUGIN",
+                "client_type": "player",
+                "session_id": session_id,
+                "plugin_id": pid
+            }
+            send_json(sock, req)
+            
+            # 接收檔案
+            file_path = os.path.join(plugins_dir, plugin_info['filename'])
+            success, msg = recv_file_with_metadata(sock, file_path)
+            
+            if success:
+                update_local_plugin_record(pid, plugin_info['version'], plugin_info['filename'])
+                print(f"  ✅ 安裝/更新成功！")
+            else:
+                print(f"  ❌ 安裝失敗: {msg}")
+            
+            input("  按 Enter 繼續...")
+            
+        elif action == "REMOVE":
+            confirm = input(f"\n  確定要移除 {plugin_info['name']} 嗎? (y/n): ").strip().lower()
+            if confirm == 'y':
+                success, msg = remove_local_plugin(pid)
+                if success:
+                    print(f"  ✅ {msg}")
+                else:
+                    print(f"  ❌ {msg}")
+                input("  按 Enter 繼續...")
 
 def show_installed_plugins():
     """顯示已安裝 Plugin"""
     print_header("已安裝 Plugin")
     
+    if not player_download_dir:
+        print("  ⚠️ 未登入")
+        input("  按 Enter 返回...")
+        return
+
     plugins_dir = os.path.join(player_download_dir, 'plugins')
-    if not os.path.exists(plugins_dir) or not os.listdir(plugins_dir):
+    record_path = os.path.join(plugins_dir, 'installed.json')
+    
+    record = {}
+    if os.path.exists(record_path):
+        try:
+            with open(record_path, 'r', encoding='utf-8') as f:
+                record = json.load(f)
+        except:
+            pass
+            
+    if not record:
         print("  ⚠️ 尚未安裝任何 Plugin")
         input("  按 Enter 返回...")
         return
         
-    print(f"Plugin 目錄: {plugins_dir}")
-    print("-" * 30)
-    for f in os.listdir(plugins_dir):
-        print(f"  - {f}")
-    print("-" * 30)
+    print(f"  {'ID':<15} {'版本':<10}")
+    print("  " + "-" * 30)
+    for pid, ver in record.items():
+        v_str = ver.get('version') if isinstance(ver, dict) else ver
+        print(f"  {pid:<15} v{v_str:<10}")
+    print("  " + "-" * 30)
     
-    choice = input("\n輸入 'del <filename>' 移除 Plugin，或按 Enter 返回: ").strip()
-    if choice.startswith('del '):
-        fname = choice[4:].strip()
-        fpath = os.path.join(plugins_dir, fname)
-        if os.path.exists(fpath):
-            try:
-                os.remove(fpath)
-                print(f"  ✅ 已移除 {fname}")
-            except Exception as e:
-                print(f"  ❌ 移除失敗: {e}")
-        else:
-            print("  ❌ 檔案不存在")
+    print("\n  輸入 Plugin ID 進行移除，或按 Enter 返回")
+    choice = input("  > ").strip()
+    
+    if choice and choice in record:
+        confirm = input(f"  確定要移除 {choice} 嗎? (y/n): ").strip().lower()
+        if confirm == 'y':
+            success, msg = remove_local_plugin(choice)
+            if success:
+                print(f"  ✅ {msg}")
+            else:
+                print(f"  ❌ {msg}")
+            input("  按 Enter 繼續...")
+    elif choice:
+        print("  ❌ 無效的 ID")
         time.sleep(1)
 
 # ========================= 主選單 =========================
@@ -906,14 +1192,15 @@ def main_menu():
             "大廳狀態",
             "遊戲商城",
             "遊戲房間",
-            "我的遊戲",
+            "我的遊戲 (已下載)",
+            "我的紀錄 (評分)",
             "Plugin 管理",
             "登出"
         ])
         
-        choice = get_choice("請選擇 (1-6): ", 6)
+        choice = get_choice("請選擇 (1-7): ", 7)
         
-        if choice == 'q' or choice == 6:
+        if choice == 'q' or choice == 7:
             if current_room:
                 send_request("LEAVE_ROOM", {"room_id": current_room})
                 current_room = None
@@ -932,7 +1219,42 @@ def main_menu():
         elif choice == 4:
             show_my_games()
         elif choice == 5:
+            show_my_history()
+        elif choice == 6:
             plugin_menu()
+
+def show_my_history():
+    """顯示我的遊玩紀錄並允許評分"""
+    print_header("我的遊玩紀錄")
+    
+    response = send_request("GET_PLAYER_PROFILE")
+    
+    if not response or not response.get("success"):
+        print(f"  ❌ {response.get('message', '查詢失敗')}")
+        input("  按 Enter 返回...")
+        return
+    
+    played_games = response["data"]["played_games"]
+    
+    if not played_games:
+        print("  ⚠️ 尚未遊玩過任何遊戲")
+        input("  按 Enter 返回...")
+        return
+        
+    print("\n  您玩過的遊戲:")
+    print("-" * 50)
+    for i, game in enumerate(played_games, 1):
+        print(f"  {i}. {game['name']} (ID: {game['game_id']})")
+    print("-" * 50)
+    print(f"  {len(played_games) + 1}. 返回")
+    
+    choice = get_choice("\n  選擇遊戲進行評分: ", len(played_games) + 1)
+    
+    if choice == 'q' or choice == len(played_games) + 1:
+        return
+        
+    selected_game = played_games[choice - 1]
+    write_review(selected_game["game_id"])
 
 def show_my_games():
     """顯示我的已下載遊戲"""

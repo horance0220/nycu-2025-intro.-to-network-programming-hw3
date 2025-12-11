@@ -16,6 +16,33 @@ def create_game():
     game_name = input("請輸入遊戲顯示名稱 (例如 My Awesome Game): ").strip()
     description = input("請輸入遊戲簡介: ").strip()
     
+    # 詢問遊戲類型
+    print("\n遊戲類型:")
+    print("1. CLI (命令列)")
+    print("2. GUI (圖形介面)")
+    while True:
+        type_choice = input("請選擇 (1/2) [預設 1]: ").strip()
+        if not type_choice:
+            game_type = "CLI"
+            break
+        if type_choice == '1':
+            game_type = "CLI"
+            break
+        elif type_choice == '2':
+            game_type = "GUI"
+            break
+            
+    # 詢問人數上限
+    while True:
+        max_p = input("請輸入最大遊玩人數 [預設 2]: ").strip()
+        if not max_p:
+            max_players = 2
+            break
+        if max_p.isdigit() and int(max_p) > 0:
+            max_players = int(max_p)
+            break
+        print("請輸入有效的數字")
+    
     # 2. 檢查目錄
     base_dir = os.path.dirname(os.path.abspath(__file__))
     games_dir = os.path.join(base_dir, "games")
@@ -43,6 +70,8 @@ def create_game():
             
             config['name'] = game_name if game_name else game_id
             config['description'] = description
+            config['game_type'] = game_type
+            config['max_players'] = max_players
             
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=4, ensure_ascii=False)

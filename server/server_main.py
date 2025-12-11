@@ -54,7 +54,20 @@ def load_database():
             }
         except json.JSONDecodeError:
             print("[Error] Database JSON 格式錯誤")
-            return None
+            try:
+                import shutil
+                shutil.copy(DATABASE_FILE, DATABASE_FILE + ".corrupted")
+                print(f"[Info] Corrupted database backed up to {DATABASE_FILE}.corrupted")
+            except:
+                pass
+            
+            return {
+                "developers": {},
+                "players": {},
+                "games": {},
+                "reviews": {},
+                "rooms": {}
+            }
 
 def save_database(db):
     """儲存資料庫"""
@@ -113,10 +126,10 @@ def handle_login(request, user_type, client_socket):
     users = db.get(user_type, {})
     
     if username not in users:
-        return create_response(False, "帳號或密碼錯誤")
+        return create_response(False, "帳號不存在，請先註冊")
     
     if users[username]["password"] != password:
-        return create_response(False, "帳號或密碼錯誤")
+        return create_response(False, "密碼錯誤")
     
     # 檢查是否已有 session（踢掉舊的）
     old_session = users[username].get("session_id")
@@ -200,7 +213,7 @@ def handle_upload_game(request, client_socket):
     
     # 檢查遊戲名稱是否已存在
     for gid, game in db.get("games", {}).items():
-        if game["name"] == game_name:
+        if game["name"] == game_name and game.get("status") == "active":
             return create_response(False, "遊戲名稱已存在")
     
     # 產生遊戲 ID
@@ -236,6 +249,35 @@ def handle_upload_game(request, client_socket):
             shutil.rmtree(game_storage, ignore_errors=True)
             return create_response(False, f"解壓縮失敗: {e}")
     
+    # 驗證遊戲檔案結構
+    extract_dir = os.path.join(game_storage, 'game')
+    config_path = os.path.join(extract_dir, 'config.json')
+    if not os.path.exists(config_path):
+        shutil.rmtree(game_storage, ignore_errors=True)
+        return create_response(False, "缺少 config.json 設定檔")
+    
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+            
+        required_fields = ["name", "version", "server_command", "client_command"]
+        missing = [field for field in required_fields if field not in config]
+        
+        if missing:
+            shutil.rmtree(game_storage, ignore_errors=True)
+            return create_response(False, f"config.json 缺少必要欄位: {', '.join(missing)}")
+            
+        if not isinstance(config.get("server_command"), list) or not isinstance(config.get("client_command"), list):
+             shutil.rmtree(game_storage, ignore_errors=True)
+             return create_response(False, "server_command 與 client_command 必須是列表 (List)")
+
+    except json.JSONDecodeError:
+        shutil.rmtree(game_storage, ignore_errors=True)
+        return create_response(False, "config.json 格式錯誤")
+    except Exception as e:
+        shutil.rmtree(game_storage, ignore_errors=True)
+        return create_response(False, f"驗證失敗: {e}")
+
     # 儲存遊戲資訊到資料庫
     db["games"][game_id] = {
         "name": game_name,
@@ -318,6 +360,30 @@ def handle_update_game(request, client_socket):
         except Exception as e:
             return create_response(False, f"解壓縮失敗: {e}")
     
+    # 驗證遊戲檔案結構
+    extract_dir = os.path.join(game_storage, 'game')
+    config_path = os.path.join(extract_dir, 'config.json')
+    if not os.path.exists(config_path):
+        return create_response(False, "缺少 config.json 設定檔")
+    
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+            
+        required_fields = ["name", "version", "server_command", "client_command"]
+        missing = [field for field in required_fields if field not in config]
+        
+        if missing:
+            return create_response(False, f"config.json 缺少必要欄位: {', '.join(missing)}")
+            
+        if not isinstance(config.get("server_command"), list) or not isinstance(config.get("client_command"), list):
+             return create_response(False, "server_command 與 client_command 必須是列表 (List)")
+
+    except json.JSONDecodeError:
+        return create_response(False, "config.json 格式錯誤")
+    except Exception as e:
+        return create_response(False, f"驗證失敗: {e}")
+
     # 更新版本資訊
     game["version"] = new_version
     game["updated_at"] = datetime.now().isoformat()
@@ -590,7 +656,8 @@ def handle_create_room(request):
         "min_players": game["min_players"],
         "status": "waiting",
         "port": port,
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
+        "chat_history": []
     }
     
     print(f"[Room] Room created: {room_id} for {game['name']} by {username}")
@@ -678,6 +745,67 @@ def handle_leave_room(request):
     print(f"[Room] {username} left room {room_id}")
     return create_response(True, "已離開房間")
 
+def handle_send_chat(request):
+    """發送聊天訊息"""
+    session_id = request.get("session_id")
+    username = verify_session(session_id, "players")
+    
+    if not username:
+        return create_response(False, "請先登入")
+    
+    room_id = request.get("room_id")
+    message = request.get("message", "").strip()
+    
+    if not message:
+        return create_response(False, "訊息不能為空")
+        
+    if room_id not in rooms:
+        return create_response(False, "房間不存在")
+        
+    room = rooms[room_id]
+    
+    if username not in room["players"]:
+        return create_response(False, "您不在此房間中")
+        
+    chat_entry = {
+        "username": username,
+        "message": message,
+        "time": datetime.now().strftime("%H:%M:%S")
+    }
+    
+    if "chat_history" not in room:
+        room["chat_history"] = []
+        
+    room["chat_history"].append(chat_entry)
+    # 保留最近 50 則
+    if len(room["chat_history"]) > 50:
+        room["chat_history"] = room["chat_history"][-50:]
+        
+    return create_response(True, "發送成功")
+
+def handle_get_room_chat(request):
+    """取得房間聊天紀錄"""
+    session_id = request.get("session_id")
+    username = verify_session(session_id, "players")
+    
+    if not username:
+        return create_response(False, "請先登入")
+        
+    room_id = request.get("room_id")
+    
+    if room_id not in rooms:
+        return create_response(False, "房間不存在")
+        
+    room = rooms[room_id]
+    
+    # 只有房間內的人可以看到聊天 (或大廳也可以? 這裡限制房間內)
+    if username not in room["players"]:
+        return create_response(False, "您不在此房間中")
+        
+    return create_response(True, "查詢成功", {
+        "chat_history": room.get("chat_history", [])
+    })
+
 def handle_list_rooms(request):
     """列出所有房間"""
     rooms_list = []
@@ -742,7 +870,11 @@ def handle_start_game(request):
         try:
             # 啟動遊戲 Server
             cmd = server_cmd.copy()
-            cmd.extend(["--port", str(room["port"])])
+            cmd.extend([
+                "--port", str(room["port"]),
+                "--lobby-port", str(SERVER_PORT),
+                "--room-id", room_id
+            ])
             
             process = subprocess.Popen(
                 cmd,
@@ -773,6 +905,38 @@ def handle_start_game(request):
         "players": room["players"],
         "client_command": config.get("client_command", [])
     })
+
+def handle_report_game_result(request):
+    """處理遊戲結果回報"""
+    # 這裡不驗證 session，因為是 Game Server 呼叫的
+    # 但為了安全，應該要驗證來源 IP (必須是 localhost 或信任的 IP)
+    # 或是檢查 room_id 對應的 process 是否存在
+    
+    room_id = request.get("room_id")
+    result = request.get("result")
+    
+    if room_id not in rooms:
+        return create_response(False, "房間不存在")
+    
+    room = rooms[room_id]
+    
+    # 驗證是否為該房間的 Game Server (簡單驗證：狀態必須是 playing)
+    if room["status"] != "playing":
+        return create_response(False, "房間不在遊戲中")
+    
+    # 更新房間狀態
+    room["status"] = "waiting"
+    print(f"[Game] Game over in room {room_id}. Result: {result}")
+    
+    # 移除 Game Server Process 記錄 (因為它即將結束)
+    if room_id in game_servers:
+        # 不用 terminate，因為是它自己回報結束的
+        del game_servers[room_id]
+    
+    # 這裡可以處理戰績更新 (如果 result 包含詳細資訊)
+    # ...
+    
+    return create_response(True, "結果已接收")
 
 def handle_end_game(request):
     """結束遊戲"""
@@ -863,6 +1027,34 @@ def handle_add_review(request):
     
     print(f"[Review] {username} reviewed {game_id} with rating {rating}")
     return create_response(True, "評論成功")
+
+def handle_get_player_profile(request):
+    """取得玩家個人資料（包含遊玩紀錄）"""
+    session_id = request.get("session_id")
+    username = verify_session(session_id, "players")
+    
+    if not username:
+        return create_response(False, "請先登入")
+    
+    db = load_database()
+    player = db["players"].get(username, {})
+    
+    played_game_ids = player.get("played_games", [])
+    played_games_details = []
+    
+    for gid in played_game_ids:
+        if gid in db["games"]:
+            game = db["games"][gid]
+            played_games_details.append({
+                "game_id": gid,
+                "name": game["name"],
+                "version": game["version"]
+            })
+            
+    return create_response(True, "查詢成功", {
+        "username": username,
+        "played_games": played_games_details
+    })
 
 # ========================= 大廳資訊 =========================
 
@@ -1007,16 +1199,24 @@ def handle_client(client_socket, client_address):
                     response = handle_create_room(request)
                 elif action == "JOIN_ROOM":
                     response = handle_join_room(request)
+                elif action == "SEND_CHAT":
+                    response = handle_send_chat(request)
+                elif action == "GET_ROOM_CHAT":
+                    response = handle_get_room_chat(request)
                 elif action == "LEAVE_ROOM":
                     response = handle_leave_room(request)
                 elif action == "LIST_ROOMS":
                     response = handle_list_rooms(request)
                 elif action == "START_GAME":
                     response = handle_start_game(request)
+                elif action == "REPORT_GAME_RESULT":
+                    response = handle_report_game_result(request)
                 elif action == "END_GAME":
                     response = handle_end_game(request)
                 elif action == "ADD_REVIEW":
                     response = handle_add_review(request)
+                elif action == "GET_PLAYER_PROFILE":
+                    response = handle_get_player_profile(request)
                 elif action == "GET_LOBBY_INFO":
                     response = handle_get_lobby_info(request)
                 elif action == "LIST_PLUGINS":

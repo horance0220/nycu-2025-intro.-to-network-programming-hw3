@@ -137,7 +137,8 @@ def login_menu():
                 input("  按 Enter 繼續...")
                 return True
             else:
-                print(f"\n  ❌ {response.get('message', '登入失敗')}")
+                msg = response.get('message', '登入失敗') if response else '無法連線到伺服器'
+                print(f"\n  ❌ {msg}")
                 input("  按 Enter 繼續...")
         
         elif choice == 2:
@@ -156,7 +157,8 @@ def login_menu():
             if response and response.get("success"):
                 print(f"\n  ✅ 註冊成功！請重新登入")
             else:
-                print(f"\n  ❌ {response.get('message', '註冊失敗')}")
+                msg = response.get('message', '註冊失敗') if response else '無法連線到伺服器'
+                print(f"\n  ❌ {msg}")
             input("  按 Enter 繼續...")
     
     return False
@@ -205,32 +207,54 @@ def upload_game():
     # 列出本地遊戲
     local_games = list_local_games()
     
-    if not local_games:
-        print("  ⚠️ 本地沒有遊戲可以上架")
-        print(f"  請將遊戲放到 {GAMES_DIR} 資料夾")
-        input("  按 Enter 返回...")
-        return
-    
     print("\n  本地遊戲列表:")
     print("-" * 50)
-    for i, game in enumerate(local_games, 1):
-        config = game.get("config")
-        if config:
-            print(f"  {i}. {config.get('name', game['folder'])} (v{config.get('version', '?')})")
-            print(f"     類型: {config.get('game_type', 'CLI')} | 人數: {config.get('min_players', 2)}-{config.get('max_players', 2)}")
-        else:
-            print(f"  {i}. {game['folder']} (無設定檔)")
+    if local_games:
+        for i, game in enumerate(local_games, 1):
+            config = game.get("config")
+            if config:
+                print(f"  {i}. {config.get('name', game['folder'])} (v{config.get('version', '?')})")
+                print(f"     類型: {config.get('game_type', 'CLI')} | 人數: {config.get('min_players', 2)}-{config.get('max_players', 2)}")
+            else:
+                print(f"  {i}. {game['folder']} (無設定檔)")
+    else:
+        print("  (無本地遊戲)")
     print("-" * 50)
-    print(f"  {len(local_games) + 1}. 返回")
     
-    choice = get_choice("\n  請選擇要上架的遊戲: ", len(local_games) + 1)
+    manual_option = len(local_games) + 1
+    back_option = len(local_games) + 2
     
-    if choice == 'q' or choice == len(local_games) + 1:
+    print(f"  {manual_option}. 手動輸入路徑")
+    print(f"  {back_option}. 返回")
+    
+    choice = get_choice("\n  請選擇要上架的遊戲: ", back_option)
+    
+    if choice == 'q' or choice == back_option:
         return
-    
-    selected_game = local_games[choice - 1]
-    game_path = selected_game["path"]
-    config = selected_game.get("config")
+        
+    if choice == manual_option:
+        while True:
+            path = input("  請輸入遊戲資料夾的絕對路徑 (輸入 q 取消): ").strip()
+            if path.lower() == 'q':
+                return
+            
+            if os.path.exists(path) and os.path.isdir(path):
+                game_path = path
+                config_path = os.path.join(game_path, 'config.json')
+                config = None
+                if os.path.exists(config_path):
+                    try:
+                        with open(config_path, 'r', encoding='utf-8') as f:
+                            config = json.load(f)
+                    except:
+                        pass
+                break
+            else:
+                print("  ❌ 路徑不存在或不是資料夾")
+    else:
+        selected_game = local_games[choice - 1]
+        game_path = selected_game["path"]
+        config = selected_game.get("config")
     
     # 檢查設定檔
     if not config:
