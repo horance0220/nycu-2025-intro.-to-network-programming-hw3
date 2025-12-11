@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.venv
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Project Specific
+# 忽略玩家下載的遊戲檔案
+player_client/downloads/
+# 忽略開發者打包的暫存檔
+developer_client/temp/
+# 忽略伺服器資料庫備份與損毀檔 (保留原始 database.json 作為範本，或視需求忽略)
+server/database.json.backup
+server/database.json.corrupted
+# 忽略伺服器儲存的遊戲檔案 (通常不進版控，除非是預設遊戲)
+server/storage/
+!server/storage/plugins/
+!server/storage/plugins/*.json
+!server/storage/plugins/*.py
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

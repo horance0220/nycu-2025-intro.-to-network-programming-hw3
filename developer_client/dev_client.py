@@ -18,8 +18,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from server.utils import send_json, recv_json, send_file
 
 # ========================= 配置 =========================
-SERVER_HOST = '127.0.0.1'
-SERVER_PORT = 5000
+SERVER_HOST = '140.113.17.11'
+SERVER_PORT = 16969
 GAMES_DIR = os.path.join(os.path.dirname(__file__), 'games')
 
 # ========================= 全域變數 =========================

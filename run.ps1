@@ -1,7 +1,7 @@
 param (
     [string]$Target = "help",
-    [string]$HostIP = "127.0.0.1",
-    [string]$Port = "5000"
+    [string]$HostIP = "140.113.17.11",
+    [string]$Port = "16969"
 )
 
 # 確保在腳本所在目錄執行

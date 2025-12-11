@@ -21,7 +21,7 @@ from utils import send_json, recv_json, recv_file_with_metadata, create_response
 
 # ========================= 配置 =========================
 SERVER_HOST = '0.0.0.0'
-SERVER_PORT = 5000
+SERVER_PORT = 16969
 STORAGE_DIR = os.path.join(os.path.dirname(__file__), 'storage')
 DATABASE_FILE = os.path.join(os.path.dirname(__file__), 'database.json')
 
@@ -32,8 +32,8 @@ rooms = {}  # room_id -> {"game_id": ..., "players": [...], "status": ..., "port
 game_servers = {}  # room_id -> subprocess
 
 # 動態分配的 Port 範圍
-GAME_PORT_START = 9000
-GAME_PORT_END = 9100
+GAME_PORT_START = 10000
+GAME_PORT_END = 11000
 used_ports = set()
 
 # ========================= 資料庫操作 =========================
