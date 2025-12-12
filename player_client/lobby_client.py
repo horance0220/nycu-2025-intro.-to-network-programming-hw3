@@ -658,16 +658,16 @@ def enter_room(room_id):
         options = []
         actions = []
         
-        if is_host and room['status'] == 'waiting':
+        if room['status'] == 'waiting':
             if can_play:
-                options.append("開始遊戲")
+                options.append("開始遊戲 (Start / Play Again)")
                 actions.append("START")
             else:
                 options.append("下載/更新遊戲")
                 actions.append("UPDATE")
-        elif not is_host and room['status'] == 'playing':
+        elif room['status'] == 'playing':
             if can_play:
-                options.append("進入遊戲")
+                options.append("加入遊戲 (Join Game)")
                 actions.append("JOIN_GAME")
             else:
                 options.append("下載/更新遊戲")

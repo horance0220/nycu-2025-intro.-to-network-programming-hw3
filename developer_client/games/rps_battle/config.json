@@ -1,0 +1,18 @@
+{
+    "id": "rps_battle",
+    "name": "RPS Battle",
+    "description": "經典剪刀石頭布對戰，採三戰兩勝制！",
+    "version": "1.0.0",
+    "author": "developer",
+    "game_type": "CLI",
+    "min_players": 2,
+    "max_players": 2,
+    "server_command": [
+        "python",
+        "server.py"
+    ],
+    "client_command": [
+        "python",
+        "client.py"
+    ]
+}

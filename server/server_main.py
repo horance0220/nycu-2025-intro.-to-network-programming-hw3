@@ -840,8 +840,8 @@ def handle_start_game(request):
     
     room = rooms[room_id]
     
-    if room["host"] != username:
-        return create_response(False, "只有房主可以開始遊戲")
+    # if room["host"] != username:
+    #     return create_response(False, "只有房主可以開始遊戲")
     
     if len(room["players"]) < room["min_players"]:
         return create_response(False, f"人數不足，至少需要 {room['min_players']} 人")
