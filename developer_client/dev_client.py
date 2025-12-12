@@ -221,10 +221,8 @@ def upload_game():
         print("  (無本地遊戲)")
     print("-" * 50)
     
-    manual_option = len(local_games) + 1
-    back_option = len(local_games) + 2
+    back_option = len(local_games) + 1
     
-    print(f"  {manual_option}. 手動輸入路徑")
     print(f"  {back_option}. 返回")
     
     choice = get_choice("\n  請選擇要上架的遊戲: ", back_option)
@@ -232,29 +230,9 @@ def upload_game():
     if choice == 'q' or choice == back_option:
         return
         
-    if choice == manual_option:
-        while True:
-            path = input("  請輸入遊戲資料夾的絕對路徑 (輸入 q 取消): ").strip()
-            if path.lower() == 'q':
-                return
-            
-            if os.path.exists(path) and os.path.isdir(path):
-                game_path = path
-                config_path = os.path.join(game_path, 'config.json')
-                config = None
-                if os.path.exists(config_path):
-                    try:
-                        with open(config_path, 'r', encoding='utf-8') as f:
-                            config = json.load(f)
-                    except:
-                        pass
-                break
-            else:
-                print("  ❌ 路徑不存在或不是資料夾")
-    else:
-        selected_game = local_games[choice - 1]
-        game_path = selected_game["path"]
-        config = selected_game.get("config")
+    selected_game = local_games[choice - 1]
+    game_path = selected_game["path"]
+    config = selected_game.get("config")
     
     # 檢查設定檔
     if not config:
