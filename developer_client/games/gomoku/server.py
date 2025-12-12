@@ -263,7 +263,7 @@ def handle_client(client_socket, player_id):
 def main():
     parser = argparse.ArgumentParser(description='五子棋遊戲伺服器')
     parser.add_argument('--port', type=int, default=9000, help='監聽埠號')
-    parser.add_argument('--host', type=str, default='0.0.0.0', help='監聽位址')
+    parser.add_argument('--host', type=str, default='140.113.17.11', help='監聽位址')
     parser.add_argument('--lobby-port', type=int, help="Lobby Server Port")
     parser.add_argument('--room-id', type=str, help="Room ID")
     args = parser.parse_args()

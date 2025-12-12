@@ -95,7 +95,7 @@ def report_result(lobby_host, lobby_port, room_id, result):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=9000)
-    parser.add_argument('--host', type=str, default='0.0.0.0')
+    parser.add_argument('--host', type=str, default='140.113.17.11')
     parser.add_argument('--lobby-port', type=int, help="Lobby Server Port")
     parser.add_argument('--room-id', type=str, help="Room ID")
     args = parser.parse_args()
