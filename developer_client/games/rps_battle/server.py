@@ -22,7 +22,7 @@ class GameState:
         self.winner = None
 
 game = GameState()
-lock = threading.Lock()
+lock = threading.RLock()
 
 def send_json(sock, data):
     try:
@@ -143,18 +143,6 @@ def process_round():
 def handle_client(client_socket, player_name):
     print(f"[Server] {player_name} 已連線")
     
-    with lock:
-        game.players[client_socket] = {"name": player_name, "score": 0, "move": None}
-        game.player_sockets.append(client_socket)
-        
-        # 如果滿兩人，開始遊戲
-        if len(game.player_sockets) == 2:
-            broadcast({
-                "type": "GAME_START",
-                "message": f"遊戲開始！搶 {WIN_COUNT} 勝",
-                "round": game.round
-            })
-    
     try:
         while True:
             header = client_socket.recv(4)
@@ -224,7 +212,19 @@ def main():
         # 等待兩位玩家
         while len(game.player_sockets) < 2:
             client, addr = server.accept()
-            player_name = f"Player{len(game.player_sockets)+1}"
+            
+            with lock:
+                player_name = f"Player{len(game.player_sockets)+1}"
+                game.players[client] = {"name": player_name, "score": 0, "move": None}
+                game.player_sockets.append(client)
+                
+                if len(game.player_sockets) == 2:
+                    broadcast({
+                        "type": "GAME_START",
+                        "message": f"遊戲開始！搶 {WIN_COUNT} 勝",
+                        "round": game.round
+                    })
+            
             threading.Thread(target=handle_client, args=(client, player_name), daemon=True).start()
             
         # 等待遊戲結束
