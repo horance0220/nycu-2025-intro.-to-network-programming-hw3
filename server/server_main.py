@@ -401,7 +401,27 @@ def handle_update_game(request, client_socket):
     save_database(db)
     
     print(f"[Update] Game updated: {game['name']} to version {new_version}")
+    
+    # 通知所有在線玩家有新版本
+    broadcast_update_notification(game['name'], new_version)
+    
     return create_response(True, "遊戲更新成功")
+
+def broadcast_update_notification(game_name, version):
+    """廣播遊戲更新通知給所有在線玩家"""
+    message = {
+        "type": "GAME_UPDATE_NOTIFICATION",
+        "game_name": game_name,
+        "version": version,
+        "message": f"📢 遊戲 [{game_name}] 已更新至 v{version}！"
+    }
+    
+    for session_id, session in active_sessions.items():
+        if session["type"] == "players":
+            try:
+                send_json(session["socket"], message)
+            except:
+                pass
 
 def handle_unpublish_game(request):
     """處理遊戲下架請求"""
@@ -657,7 +677,8 @@ def handle_create_room(request):
         "status": "waiting",
         "port": port,
         "created_at": datetime.now().isoformat(),
-        "chat_history": []
+        "chat_history": [],
+        "ready_players": []
     }
     
     print(f"[Room] Room created: {room_id} for {game['name']} by {username}")
@@ -731,6 +752,8 @@ def handle_leave_room(request):
         return create_response(False, "您不在此房間中")
     
     room["players"].remove(username)
+    if "ready_players" in room and username in room["ready_players"]:
+        room["ready_players"].remove(username)
     
     # 如果房間空了，刪除房間
     if not room["players"]:
@@ -849,7 +872,24 @@ def handle_start_game(request):
     if room["status"] != "waiting":
         return create_response(False, "遊戲已經開始")
     
-    # 啟動遊戲伺服器
+    # 處理準備狀態
+    if "ready_players" not in room:
+        room["ready_players"] = []
+        
+    if username not in room["ready_players"]:
+        room["ready_players"].append(username)
+        
+    ready_count = len(room["ready_players"])
+    total_count = len(room["players"])
+    
+    if ready_count < total_count:
+        return create_response(True, "已準備", {
+            "status": "ready_waiting",
+            "ready_count": ready_count,
+            "total_count": total_count
+        })
+    
+    # 所有人都準備好了，啟動遊戲伺服器
     db = load_database()
     game = db["games"][room["game_id"]]
     game_dir = os.path.join(game["storage_path"], 'game')
@@ -888,6 +928,7 @@ def handle_start_game(request):
             return create_response(False, f"啟動遊戲伺服器失敗: {e}")
     
     room["status"] = "playing"
+    room["ready_players"] = [] # 清空準備狀態
     print(f"[Room] Room {room_id} status changed to 'playing'")
     
     # 記錄玩家已玩過此遊戲
@@ -926,6 +967,7 @@ def handle_report_game_result(request):
     
     # 更新房間狀態
     room["status"] = "waiting"
+    room["ready_players"] = [] # 重置準備狀態
     print(f"[Game] Game over in room {room_id}. Result: {result}")
     
     # 移除 Game Server Process 記錄 (因為它即將結束)
@@ -1135,6 +1177,39 @@ def handle_download_plugin(request, client_socket):
     except Exception as e:
         print(f"[Error] Failed to send plugin: {e}")
 
+def cleanup_user_from_rooms(username):
+    """清理使用者在房間的狀態"""
+    # 複製 keys 以避免迭代時修改字典錯誤
+    for room_id in list(rooms.keys()):
+        if room_id not in rooms: continue # 可能已被刪除
+        
+        room = rooms[room_id]
+        if username in room["players"]:
+            room["players"].remove(username)
+            if "ready_players" in room and username in room["ready_players"]:
+                room["ready_players"].remove(username)
+            print(f"[Room] {username} removed from room {room_id} (disconnect)")
+            
+            # 如果房間空了，刪除房間
+            if not room["players"]:
+                # 停止遊戲伺服器
+                if room_id in game_servers:
+                    try:
+                        game_servers[room_id].terminate()
+                        game_servers[room_id].wait(timeout=1)
+                    except:
+                        pass
+                    del game_servers[room_id]
+                
+                release_port(room["port"])
+                del rooms[room_id]
+                print(f"[Room] Room {room_id} deleted (empty)")
+            
+            # 如果是房主離開，轉移房主
+            elif room["host"] == username:
+                room["host"] = room["players"][0]
+                print(f"[Room] Host transferred to {room['host']} in room {room_id}")
+
 # ========================= Client 處理 =========================
 
 def handle_client(client_socket, client_address):
@@ -1241,6 +1316,11 @@ def handle_client(client_socket, client_address):
         if current_session and current_session in active_sessions:
             username = active_sessions[current_session]["username"]
             user_type = active_sessions[current_session]["type"]
+            
+            # 如果是玩家，清理房間狀態
+            if user_type == "players":
+                cleanup_user_from_rooms(username)
+            
             del active_sessions[current_session]
             
             db = load_database()

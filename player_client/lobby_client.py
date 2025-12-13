@@ -30,6 +30,8 @@ username = None
 player_download_dir = None
 current_room = None
 game_process = None
+last_notification = None
+last_notification_time = 0
 
 # ========================= 工具函式 =========================
 
@@ -42,6 +44,11 @@ def print_header(title):
     print("\n" + "=" * 50)
     print(f"  {title}")
     print("=" * 50)
+    
+    global last_notification, last_notification_time
+    if last_notification and time.time() - last_notification_time < 15:
+        print(f"\n  {last_notification}")
+        print("  " + "-" * 50)
 
 def print_menu(options):
     """印出選單"""
@@ -83,8 +90,19 @@ def send_request(action, data=None):
         print("  ❌ 發送請求失敗")
         return None
     
-    response = recv_json(sock)
-    return response
+    while True:
+        response = recv_json(sock)
+        if not response:
+            return None
+            
+        if response.get("type") == "GAME_UPDATE_NOTIFICATION":
+            global last_notification, last_notification_time
+            last_notification = response.get("message")
+            last_notification_time = time.time()
+            print(f"\n  {last_notification}")
+            continue
+            
+        return response
 
 # ========================= 連線管理 =========================
 
@@ -361,7 +379,16 @@ def download_game(game_id, game_name, server_version):
     send_json(sock, {"status": "READY"})
     
     # 接收檔案 metadata
-    file_meta = recv_json(sock)
+    while True:
+        file_meta = recv_json(sock)
+        if file_meta and file_meta.get("type") == "GAME_UPDATE_NOTIFICATION":
+            global last_notification, last_notification_time
+            last_notification = file_meta.get("message")
+            last_notification_time = time.time()
+            print(f"\n  {last_notification}")
+            continue
+        break
+
     if not file_meta or file_meta.get("type") != "FILE_TRANSFER":
         print(f"\n  ❌ 未收到檔案")
         input("  按 Enter 返回...")
@@ -393,6 +420,23 @@ def download_game(game_id, game_name, server_version):
     try:
         with zipfile.ZipFile(file_path, 'r') as zip_ref:
             zip_ref.extractall(game_dir)
+            
+        # 自動更新 config.json 中的版本號
+        config_path = os.path.join(game_dir, 'config.json')
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                
+                config['version'] = server_version
+                
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=4, ensure_ascii=False)
+                    
+                print(f"  📝 Config 版本已更新至 v{server_version}")
+            except Exception as e:
+                print(f"  ⚠️ 更新 Config 版本失敗: {e}")
+            
         print(f"\n  ✅ 下載完成！")
         print(f"  📁 路徑: {game_dir}")
     except Exception as e:
@@ -732,18 +776,27 @@ def launch_game_client(game_id, port, client_cmd=None):
             config = json.load(f)
         
         cmd = config.get("client_command", client_cmd)
+        game_type = config.get("game_type", "GUI") # 預設為 GUI
+
         if cmd:
             # 加入連線參數
             full_cmd = cmd + ["--host", SERVER_HOST, "--port", str(port)]
             print(f"  啟動指令: {' '.join(full_cmd)}")
             
             try:
-                game_process = subprocess.Popen(
-                    full_cmd,
-                    cwd=game_dir,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
-                )
-                print("  ✅ 遊戲視窗已開啟")
+                if game_type == "CLI":
+                    # CLI 遊戲：直接在當前視窗執行，並等待結束
+                    print("  ✅ 正在啟動 CLI 遊戲...")
+                    subprocess.call(full_cmd, cwd=game_dir)
+                    print("  ✅ 遊戲結束，返回大廳")
+                else:
+                    # GUI 遊戲：開新視窗，不等待
+                    game_process = subprocess.Popen(
+                        full_cmd,
+                        cwd=game_dir,
+                        creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
+                    )
+                    print("  ✅ 遊戲視窗已開啟")
             except FileNotFoundError:
                 print("  ⚠️ 找不到遊戲執行檔，請手動啟動")
             except Exception as e:
@@ -765,6 +818,46 @@ def start_game(room_id, game_name):
         return
     
     data = response["data"]
+    
+    # 檢查是否需要等待其他玩家
+    if data.get("status") == "ready_waiting":
+        ready_count = data.get("ready_count")
+        total_count = data.get("total_count")
+        print(f"\n  ✅ 已準備！等待其他玩家... ({ready_count}/{total_count})")
+        print("  (請勿關閉視窗，遊戲將自動開始)")
+        
+        while True:
+            time.sleep(1)
+            # 輪詢房間狀態
+            resp = send_request("LIST_ROOMS")
+            if not resp or not resp.get("success"):
+                print("  ❌ 連線中斷")
+                input("  按 Enter 返回...")
+                return
+                
+            room = None
+            for r in resp["data"]["rooms"]:
+                if r['room_id'] == room_id:
+                    room = r
+                    break
+            
+            if not room:
+                print("  ⚠️ 房間已解散")
+                input("  按 Enter 返回...")
+                return
+                
+            if room['status'] == 'playing':
+                # 遊戲開始了！
+                # 這裡需要再次呼叫 START_GAME 或是直接取得 Port
+                # 但因為 START_GAME 會回傳 Port，所以我們可以再次呼叫它
+                # 或者更簡單：直接加入遊戲
+                print("\n  🚀 所有玩家已準備，遊戲開始！")
+                join_started_game(room_id, room['game_id'], room.get('port'))
+                return
+            
+            # 更新等待訊息 (可選)
+            # print(".", end="", flush=True)
+            
     port = data["port"]
     client_cmd = data.get("client_command", [])
     game_id = data.get("game_id", room_id.split('-')[0]) # Fallback for old server
