@@ -9,6 +9,7 @@ import threading
 import json
 import argparse
 import tkinter as tk
+import platform
 from tkinter import messagebox, scrolledtext
 
 class GuessNumberClient:
@@ -28,7 +29,10 @@ class GuessNumberClient:
         self.root.title("猜數字大戰")
         self.root.resizable(False, False)
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+        # 選擇字體
         
+        self.font_family = 'Microsoft JhengHei' if platform.system() == 'Windows' else 'WenQuanYi Micro Hei'
         self.setup_gui()
     
     def setup_gui(self):
@@ -40,14 +44,14 @@ class GuessNumberClient:
         tk.Label(
             main_frame,
             text="🎲 猜數字大戰 🎲",
-            font=('Microsoft JhengHei', 20, 'bold')
+            font=(self.font_family, 20, 'bold')
         ).pack(pady=10)
         
         # 狀態
         self.status_label = tk.Label(
             main_frame,
             text="連線中...",
-            font=('Microsoft JhengHei', 14),
+            font=(self.font_family, 14),
             fg='blue'
         )
         self.status_label.pack(pady=5)
@@ -56,7 +60,7 @@ class GuessNumberClient:
         self.range_label = tk.Label(
             main_frame,
             text="範圍: 1 ~ 100",
-            font=('Microsoft JhengHei', 16, 'bold'),
+            font=(self.font_family, 16, 'bold'),
             fg='#333'
         )
         self.range_label.pack(pady=10)
@@ -68,12 +72,12 @@ class GuessNumberClient:
         tk.Label(
             input_frame,
             text="你的猜測:",
-            font=('Microsoft JhengHei', 12)
+            font=(self.font_family, 12)
         ).pack(side=tk.LEFT)
         
         self.guess_entry = tk.Entry(
             input_frame,
-            font=('Microsoft JhengHei', 14),
+            font=(self.font_family, 14),
             width=10,
             justify='center'
         )
@@ -83,7 +87,7 @@ class GuessNumberClient:
         self.guess_button = tk.Button(
             input_frame,
             text="猜！",
-            font=('Microsoft JhengHei', 12),
+            font=(self.font_family, 12),
             command=self.send_guess,
             state='disabled'
         )
@@ -93,13 +97,13 @@ class GuessNumberClient:
         tk.Label(
             main_frame,
             text="目前玩家:",
-            font=('Microsoft JhengHei', 10)
+            font=(self.font_family, 10)
         ).pack(pady=(20, 5))
         
         self.players_label = tk.Label(
             main_frame,
             text="--",
-            font=('Microsoft JhengHei', 10),
+            font=(self.font_family, 10),
             fg='gray'
         )
         self.players_label.pack()
@@ -108,14 +112,14 @@ class GuessNumberClient:
         tk.Label(
             main_frame,
             text="遊戲記錄:",
-            font=('Microsoft JhengHei', 10)
+            font=(self.font_family, 10)
         ).pack(pady=(20, 5))
         
         self.log_text = scrolledtext.ScrolledText(
             main_frame,
             width=40,
             height=10,
-            font=('Microsoft JhengHei', 10),
+            font=(self.font_family, 10),
             state='disabled'
         )
         self.log_text.pack()
@@ -126,7 +130,7 @@ class GuessNumberClient:
         
         self.chat_entry = tk.Entry(
             chat_frame,
-            font=('Microsoft JhengHei', 10)
+            font=(self.font_family, 10)
         )
         self.chat_entry.pack(side=tk.LEFT, expand=True, fill=tk.X)
         self.chat_entry.bind('<Return>', self.send_chat)
