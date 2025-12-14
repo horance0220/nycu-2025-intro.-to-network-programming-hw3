@@ -1,7 +1,5 @@
 # Game Store System - 遊戲商城系統
 
-一個整合遊戲大廳（Lobby）與遊戲商城（Store）的網路平台。
-
 ## 📁 專案結構
 
 ```
