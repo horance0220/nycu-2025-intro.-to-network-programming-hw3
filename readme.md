@@ -33,11 +33,7 @@ netgame-hw3/
 
 確保已安裝 Python 3.8+。
 
-```bash
-pip install -r requirements.txt
-```
-
-### 2. 啟動客戶端 Windows
+### 2. 啟動客戶端 (Windows)
 
 **啟動開發者客戶端 (Developer Client):**
 ```powershell
@@ -55,7 +51,6 @@ pip install -r requirements.txt
 
 **啟動開發者客戶端 (Developer Client):**
 ```bash
-# 啟動開發者客戶端
 make dev
 ```
 
@@ -137,8 +132,16 @@ make player
 本系統提供了一個標準化的遊戲開發框架，您可以依照以下步驟開發自己的多人連線遊戲：
 
 1. **建立專案目錄**
-   - 在 `developer_client/games/` 下建立一個新的資料夾（例如 `my_new_game`）。
-   - 將 `developer_client/template/` 中的所有檔案複製到新資料夾中。
+   - 在 `\developer_client`資料夾下執行
+   ```powershell
+      #Windows
+      python create_game_template.py
+   ```
+
+   ```bash
+      #Mac/Linux
+      python3 create_game_template.py
+   ```
 
 2. **設定 Config**
    - 編輯 `config.json`，設定遊戲名稱、描述、人數限制等。
