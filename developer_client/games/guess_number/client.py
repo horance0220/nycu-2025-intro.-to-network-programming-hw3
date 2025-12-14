@@ -9,7 +9,6 @@ import threading
 import json
 import argparse
 import tkinter as tk
-import platform
 from tkinter import messagebox, scrolledtext
 
 class GuessNumberClient:
@@ -26,13 +25,12 @@ class GuessNumberClient:
         
         # 建立 GUI
         self.root = tk.Tk()
-        self.root.title("猜數字大戰")
+        self.root.title("Guess Number Battle")
         self.root.resizable(False, False)
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        # 選擇字體
-        
-        self.font_family = 'Microsoft JhengHei' if platform.system() == 'Windows' else 'WenQuanYi Micro Hei'
+        # 選擇字體 (使用通用無襯線字體)
+        self.font_family = 'Arial'
         self.setup_gui()
     
     def setup_gui(self):
@@ -43,14 +41,14 @@ class GuessNumberClient:
         # 標題
         tk.Label(
             main_frame,
-            text="🎲 猜數字大戰 🎲",
+            text="🎲 Guess Number Battle 🎲",
             font=(self.font_family, 20, 'bold')
         ).pack(pady=10)
         
         # 狀態
         self.status_label = tk.Label(
             main_frame,
-            text="連線中...",
+            text="Connecting...",
             font=(self.font_family, 14),
             fg='blue'
         )
@@ -59,7 +57,7 @@ class GuessNumberClient:
         # 範圍提示
         self.range_label = tk.Label(
             main_frame,
-            text="範圍: 1 ~ 100",
+            text="Range: 1 ~ 100",
             font=(self.font_family, 16, 'bold'),
             fg='#333'
         )
@@ -71,7 +69,7 @@ class GuessNumberClient:
         
         tk.Label(
             input_frame,
-            text="你的猜測:",
+            text="Your Guess:",
             font=(self.font_family, 12)
         ).pack(side=tk.LEFT)
         
@@ -86,7 +84,7 @@ class GuessNumberClient:
         
         self.guess_button = tk.Button(
             input_frame,
-            text="猜！",
+            text="Guess!",
             font=(self.font_family, 12),
             command=self.send_guess,
             state='disabled'
@@ -96,7 +94,7 @@ class GuessNumberClient:
         # 玩家列表
         tk.Label(
             main_frame,
-            text="目前玩家:",
+            text="Players:",
             font=(self.font_family, 10)
         ).pack(pady=(20, 5))
         
@@ -111,7 +109,7 @@ class GuessNumberClient:
         # 遊戲記錄
         tk.Label(
             main_frame,
-            text="遊戲記錄:",
+            text="Game Log:",
             font=(self.font_family, 10)
         ).pack(pady=(20, 5))
         
@@ -137,7 +135,7 @@ class GuessNumberClient:
         
         tk.Button(
             chat_frame,
-            text="發送",
+            text="Send",
             command=self.send_chat
         ).pack(side=tk.RIGHT)
     
@@ -170,7 +168,7 @@ class GuessNumberClient:
             })
             self.guess_entry.delete(0, tk.END)
         except ValueError:
-            self.status_label.config(text="請輸入有效數字！", fg='red')
+            self.status_label.config(text="Please enter a valid number!", fg='red')
     
     def send_chat(self, event=None):
         """發送聊天"""
@@ -206,7 +204,7 @@ class GuessNumberClient:
             
             except Exception as e:
                 if self.running:
-                    print(f"接收錯誤: {e}")
+                    print(f"Receive Error: {e}")
                 break
         
         self.running = False
@@ -218,40 +216,40 @@ class GuessNumberClient:
         if msg_type == "JOINED":
             self.player_name = message["player_name"]
             self.status_label.config(
-                text=f"你是: {self.player_name} | 等待其他玩家...",
+                text=f"You are: {self.player_name} | Waiting for players...",
                 fg='blue'
             )
-            self.add_log(f"=== 你加入了遊戲 ({self.player_name}) ===")
+            self.add_log(f"=== You joined the game ({self.player_name}) ===")
         
         elif msg_type == "PLAYER_JOINED":
-            self.add_log(f"✨ {message['player_name']} 加入了遊戲 ({message['player_count']} 人)")
+            self.add_log(f"✨ {message['player_name']} joined ({message['player_count']} players)")
         
         elif msg_type == "PLAYER_LEFT":
-            self.add_log(f"❌ {message['player_name']} 離開了遊戲")
+            self.add_log(f"❌ {message['player_name']} left")
         
         elif msg_type == "COUNTDOWN":
             self.status_label.config(text=message["message"], fg='orange')
             self.add_log(message["message"])
         
         elif msg_type == "GAME_START":
-            self.add_log("=== 🎮 遊戲開始！===")
-            self.range_label.config(text=f"範圍: {message['range']['min']} ~ {message['range']['max']}")
+            self.add_log("=== 🎮 Game Start! ===")
+            self.range_label.config(text=f"Range: {message['range']['min']} ~ {message['range']['max']}")
         
         elif msg_type == "TURN":
             current = message["current_player"]
             self.min_range = message["range"]["min"]
             self.max_range = message["range"]["max"]
             
-            self.range_label.config(text=f"範圍: {self.min_range} ~ {self.max_range}")
+            self.range_label.config(text=f"Range: {self.min_range} ~ {self.max_range}")
             
             if current == self.player_name:
                 self.my_turn = True
                 self.guess_button.config(state='normal')
-                self.status_label.config(text="⏰ 輪到你猜了！", fg='green')
+                self.status_label.config(text="⏰ Your Turn!", fg='green')
             else:
                 self.my_turn = False
                 self.guess_button.config(state='disabled')
-                self.status_label.config(text=f"等待 {current} 猜測...", fg='gray')
+                self.status_label.config(text=f"Waiting for {current}...", fg='gray')
         
         elif msg_type == "GUESS_RESULT":
             player = message["player"]
@@ -259,15 +257,15 @@ class GuessNumberClient:
             result = message["result"]
             
             if result == "higher":
-                self.add_log(f"📈 {player} 猜 {guess}，太小了！")
+                self.add_log(f"📈 {player} guessed {guess}, too small!")
             elif result == "lower":
-                self.add_log(f"📉 {player} 猜 {guess}，太大了！")
+                self.add_log(f"📉 {player} guessed {guess}, too big!")
             elif result == "correct":
-                self.add_log(f"🎯 {player} 猜 {guess}，答對了！")
+                self.add_log(f"🎯 {player} guessed {guess}, Correct!")
             
             self.min_range = message["range"]["min"]
             self.max_range = message["range"]["max"]
-            self.range_label.config(text=f"範圍: {self.min_range} ~ {self.max_range}")
+            self.range_label.config(text=f"Range: {self.min_range} ~ {self.max_range}")
         
         elif msg_type == "GAME_OVER":
             self.game_over = True
@@ -277,12 +275,12 @@ class GuessNumberClient:
             answer = message["answer"]
             
             if winner == self.player_name:
-                self.status_label.config(text="🎉 恭喜你贏了！", fg='green')
+                self.status_label.config(text="🎉 You Win!", fg='green')
             else:
-                self.status_label.config(text=f"{winner} 獲勝！答案是 {answer}", fg='blue')
+                self.status_label.config(text=f"{winner} Wins! Answer: {answer}", fg='blue')
             
             self.add_log(f"=== {message['message']} ===")
-            messagebox.showinfo("遊戲結束", message["message"])
+            messagebox.showinfo("Game Over", message["message"])
         
         elif msg_type == "CHAT":
             self.add_log(f"💬 {message['player']}: {message['message']}")
@@ -291,7 +289,7 @@ class GuessNumberClient:
             self.status_label.config(text=message["message"], fg='red')
         
         elif msg_type in ["FULL", "STARTED"]:
-            messagebox.showerror("無法加入", message["message"])
+            messagebox.showerror("Cannot Join", message["message"])
             self.root.destroy()
     
     def connect(self):
@@ -306,7 +304,7 @@ class GuessNumberClient:
             
             return True
         except Exception as e:
-            messagebox.showerror("連線失敗", f"無法連線:\n{e}")
+            messagebox.showerror("Connection Failed", f"Cannot connect:\n{e}")
             return False
     
     def on_closing(self):
