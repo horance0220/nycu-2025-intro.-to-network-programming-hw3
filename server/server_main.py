@@ -892,11 +892,26 @@ def handle_start_game(request):
     # 所有人都準備好了，啟動遊戲伺服器
     db = load_database()
     game = db["games"][room["game_id"]]
-    game_dir = os.path.join(game["storage_path"], 'game')
+    
+    # 修正路徑問題：不直接使用 DB 中的絕對路徑，而是根據當前環境重新組合
+    # game["storage_path"] 可能是舊的或異質系統的路徑，我們只取最後的目錄名 (game_id)
+    game_id_dir = os.path.basename(game["storage_path"])
+    # 如果 basename 取不到 (例如路徑結尾有斜線)，則直接用 game_id
+    if not game_id_dir or game_id_dir == "":
+        game_id_dir = room["game_id"]
+        
+    game_storage_path = os.path.join(STORAGE_DIR, game_id_dir)
+    game_dir = os.path.join(game_storage_path, 'game')
     config_path = os.path.join(game_dir, 'config.json')
     
     if not os.path.exists(config_path):
-        return create_response(False, "遊戲配置檔不存在")
+        # 嘗試另一種常見結構 (直接在 storage_path 下)
+        if os.path.exists(os.path.join(game_storage_path, 'config.json')):
+             game_dir = game_storage_path
+             config_path = os.path.join(game_dir, 'config.json')
+        else:
+             print(f"[Error] Config not found at: {config_path}")
+             return create_response(False, "遊戲配置檔不存在")
     
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
